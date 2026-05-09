@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neon Dodge: Ultimate</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; background: #050505; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        canvas { display: block; }
+        #ui { 
+            position: absolute; top: 20px; left: 20px; color: #ffd700; 
+            font-size: 24px; pointer-events: none; text-shadow: 0 0 10px #ffd700; font-weight: bold;
+        }
+        #high-score { font-size: 14px; color: rgba(255, 215, 0, 0.6); }
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10;
+        }
+        button {
+            padding: 20px 40px; font-size: 24px; background: #ffd700; color: #000;
+            border: none; border-radius: 50px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 0 20px #ffd700;
+        }
+    </style>
+</head>
+<body>
+    <div id="start-screen">
+        <button onclick="startGame()">START MISSION</button>
+        <p style="color:#ffd700; margin-top:20px;">TILT TO STEER</p>
+    </div>
+    <div id="ui">
+        SCORE: <span id="current-score">0</span><br>
+        <div id="high-score">BEST: <span id="best-score">0</span></div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let score = 0;
+    let highScore = localStorage.getItem('neonDodgeHiScore') || 0;
+    document.getElementById('best-score').innerText = highScore;
+
+    let gameActive = false;
+    let speedMult = 1;
+    let timeDilation = 1;
+    let shieldActive = false;
+    let shieldTimer = 0;
+    let tiltX = 0;
+    let gridOffset = 0;
+
+    const player = { x: canvas.width / 2, y: canvas.height - 120, radius: 18 };
+    const obstacles = [];
+    const powerups = [];
+
+    function startGame() {
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(res => {
+                if (res == 'granted') window.addEventListener('deviceorientation', e => tiltX = e.gamma);
+            });
+        } else {
+            window.addEventListener('deviceorientation', e => tiltX = e.gamma);
+        }
+        document.getElementById('start-screen').style.display = 'none';
+        gameActive = true;
+        draw();
+    }
+
+    function spawnObstacle() {
+        const width = Math.random() * (canvas.width * 0.4) + 60;
+        obstacles.push({ x: Math.random() * (canvas.width - width), y: -50, w: width, h: 15 });
+    }
+
+    function spawnPowerup() {
+        const type = Math.random() > 0.5 ? 'shield' : 'slowmo';
+        powerups.push({ x: Math.random() * (canvas.width - 20), y: -50, radius: 12, type, color: type === 'shield' ? '#00d4ff' : '#00ff66' });
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        // Grid Animation Logic
+        gridOffset += (5 * speedMult * timeDilation);
+        if (gridOffset > 40) gridOffset = 0;
+
+        // Movement
+        player.x += (tiltX * 1.8);
+        if (player.x < player.radius) player.x = player.radius;
+        if (player.x > canvas.width - player.radius) player.x = canvas.width - player.radius;
+
+        if (Math.random() < 0.04) spawnObstacle();
+        if (Math.random() < 0.006) spawnPowerup();
+
+        if (timeDilation < 1) timeDilation += 0.002; 
+        if (shieldTimer > 0) shieldTimer--; else shieldActive = false;
+
+        // Obstacles
+        obstacles.forEach((obs, i) => {
+            obs.y += (7 * speedMult * timeDilation);
+            if (!shieldActive && player.x + 15 > obs.x && player.x - 15 < obs.x + obs.w && player.y + 10 > obs.y && player.y - 10 < obs.y + obs.h) {
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                gameOver();
+            }
+            if (obs.y > canvas.height) {
+                obstacles.splice(i, 1);
+                score++;
+                speedMult += 0.005;
+                document.getElementById('current-score').innerText = score;
+            }
+        });
+
+        // Powerups
+        powerups.forEach((p, i) => {
+            p.y += (4 * timeDilation);
+            if (Math.hypot(player.x - p.x, player.y - p.y) < player.radius + p.radius) {
+                if (navigator.vibrate) navigator.vibrate(50);
+                if (p.type === 'shield') { shieldActive = true; shieldTimer = 300; }
+                else { timeDilation = 0.3; }
+                powerups.splice(i, 1);
+            }
+        });
+    }
+
+    function gameOver() {
+        gameActive = false;
+        if (score > highScore) {
+            localStorage.setItem('neonDodgeHiScore', score);
+            alert("NEW HIGH SCORE: " + score);
+        } else {
+            alert("GAME OVER! Score: " + score);
+        }
+        location.reload();
+    }
+
+    function draw() {
+        ctx.fillStyle = '#050505';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Moving Grid Background
+        ctx.strokeStyle = 'rgba(255, 215, 0, 0.1)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < canvas.width; x += 40) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (let y = gridOffset; y < canvas.height; y += 40) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+
+        // Player
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = shieldActive ? '#00d4ff' : '#ffd700';
+        ctx.fillStyle = shieldActive ? '#00d4ff' : '#ffd700';
+        ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2); ctx.fill();
+
+        // Obstacles
+        ctx.shadowBlur = 0;
+        obstacles.forEach(obs => {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+            ctx.strokeStyle = '#ffd700';
+            ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+        });
+
+        // Powerups
+        powerups.forEach(p => {
+            ctx.shadowBlur = 15; ctx.shadowColor = p.color;
+            ctx.fillStyle = p.color;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+        });
+
+        if (gameActive) requestAnimationFrame(draw);
+        update();
+    }
+</script>
+</body>
+</html>
